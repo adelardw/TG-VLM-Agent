@@ -33,6 +33,7 @@
 │   │   ├── file_system_tools.py
 │   │   ├── finance_tools.py
 │   │   ├── google_api_tools.py
+│   │   ├── notification_tools.py
 │   │   ├── utils.py
 │   │   ├── weather_tool.py
 │   │   └── web_tools.py
@@ -44,6 +45,8 @@
 │   ├── llm.py
 │   ├── config.py
 │   ├── agent_builder.py
+│   ├── scheduler_manager.py
+│   ├── users_cache.py
 ├── app.py
 ├── tg.py
 ├── token.json
@@ -53,6 +56,7 @@
 ├── docker-compose.yml
 ├── pyproject.toml
 ├── requirements.txt
+├── LICENSE.md
 └── uv.lock
 ```
 
@@ -80,17 +84,3 @@ uv run tg.py
 3. Работает через OpenRouter провайдера, пополнение через p2p и прочие сервисы.
 4. Есть возможности интеграции своих агентов, см. agent_builder.py и пример создания agents.py
 5. Вся конфиденциальная инфа - .env файл, смотрите как считываются переменные в config.py. Именно оттуда идет импорт во все остальные модули.
-6. billing.py - для тех, кто купит у меня лицензию на коммерческое использование будет доступно, и расскажу про интеграцию
-По всем вопросам - всё есть в ТГ в профиле на github =)
-
-# Поднятие сервиса с календарем
-
-```zsh
-uv run uvicorn src.calendar.main:app --reload
-```
-
-# Для локального развертывания календаря - нужно прокинуть тунель.Пока версия на macos
-
-```zsh
-zsh selfhosted.sh
-```
