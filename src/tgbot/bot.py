@@ -90,7 +90,7 @@ async def cmd_menu(message: types.Message):
         await message.answer("Срок вашей подписки истек. Чтобы продолжить, пожалуйста, оформите новую.",
                              reply_markup=builder.as_markup(resize_keyboard=True))
     else:
-        if str(user_id) == str(ADMIN_ID) or str(user_id) in WHITE_LIST:
+        if str(user_id) in WHITE_LIST:
             builder.row(KeyboardButton(text="[AGENTIC MODE]"))
 
         builder.row(KeyboardButton(text="Прочитать пользовательское соглашение"))
@@ -113,7 +113,6 @@ async def user_confidence_state(message: types.Message, state: FSMContext):
 
     user_id = message.from_user.id
     builder = ReplyKeyboardBuilder()
-    is_subscribed, _ = check_subscription(user_id, cache_db)
 
     builder.row(KeyboardButton(text="Принять"))
     builder.row(KeyboardButton(text="Отказаться"))
