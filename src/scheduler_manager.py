@@ -1,11 +1,6 @@
-import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.redis import RedisJobStore
-
-# Настраиваем логгер для этого файла
-logger = logging.getLogger(__name__)
-
-# 1. Настройки Redis (ваша 7-я база)
+from src.beautylogger import logger
 job_stores = {
     'default': RedisJobStore(
         jobs_key='tg_bot:jobs', 
