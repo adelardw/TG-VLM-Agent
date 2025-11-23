@@ -70,9 +70,8 @@ def check_subscription(user_id: int, cache: redis.StrictRedis) -> tuple[bool, da
     """
     if str(user_id) not in WHITE_LIST:
         sub_end_date_str = cache.get(f"sub_end_date_{user_id}")
-        logger.info(f"[CHECK] {sub_end_date_str}")
-        sub_end_date_str = sub_end_date_str.decode()
         if sub_end_date_str:
+            sub_end_date_str = sub_end_date_str.decode()
             sub_end_date = datetime.fromisoformat(sub_end_date_str)
             if datetime.now(TIMEZONE) < sub_end_date:
                 return True, sub_end_date 
