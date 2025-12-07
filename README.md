@@ -34,6 +34,7 @@
 │   ├── graphs
 │   │   ├── __init__.py
 │   │   ├── graph_states.py
+│   │   ├── default_graph.py
 │   │   ├── news_summary_graph.py
 │   │   ├── prompts.py
 │   │   ├── structured_outputs.py
@@ -44,6 +45,7 @@
 │   │   ├── billing.py
 │   │   ├── bot_shemas.py
 │   │   ├── bot.py
+│   │   ├── middleware.py
 │   │   ├── users_cache.py
 │   │   └── utils.py
 │   ├── tools
@@ -61,11 +63,13 @@
 │   │   ├── __init__.py
 │   │   ├── vega_config.py
 │   │   ├── vega_bot.py
+│   │   ├── vega_bot.py
 │   │   └── vega_stream.py
 │   ├── llm.py
 │   ├── config.py
 │   ├── agent_builder.py
 │   ├── scheduler_manager.py
+│   ├── user_memory.py
 │   ├── users_cache.py
 ├── app.py
 ├── tg.py
