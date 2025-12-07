@@ -12,6 +12,7 @@ import io
 import numpy as np
 import soundfile as sf
 import librosa
+from .middleware import AlbumMiddleware
 from datetime import datetime
 from vega.vega_stream import VEGA
 from agents import tgc_mas
@@ -36,6 +37,8 @@ dp = Dispatcher(storage=storage)
 router = Router()
 vega = VEGA()
 dp.include_router(router)
+
+router.message.middleware(AlbumMiddleware(latency=0.6))
 
 
 async def process_message_content(bot: Bot, message: types.Message, album: list[types.Message] = None):
@@ -247,6 +250,7 @@ async def send_message(message: types.Message, state: FSMContext):
     is_subscribed, end_date = check_subscription(user_id, cache_db)
     builder = ReplyKeyboardBuilder()
     if is_subscribed:
+        builder.row(KeyboardButton(text="Выход из режима"))
         await message.answer(
             "🕵️ *Режим Агента активирован*\n"
             "Я выполняю задачи (поиск, календарь, погода).\n"
@@ -292,7 +296,7 @@ async def chat(message: types.Message, state: FSMContext, bot: Bot):
         await cmd_menu(message)
 
     #await state.set_state(BotStates.main_menu)
-    await cmd_menu(message)
+    #await cmd_menu(message)
 
 
 @router.message(F.text | F.voice | F.photo)
