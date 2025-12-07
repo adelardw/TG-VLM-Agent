@@ -150,7 +150,8 @@ class MakeRoutingMultiAgents():
         if self.agent_types[agent_name] == 'react' or self.agent_types[agent_name] == 'graph' or \
                                     self.agent_types[agent_name] == 'create_structured_chat_agent':
 
-            answer = await self.agents[agent_name].ainvoke(input=input)['output']
+            answer = (await self.agents[agent_name].ainvoke(input=input))
+            answer = answer['output']
             self.agent_answer[agent_name] = {datetime.now().isoformat(): answer}
 
         elif self.agent_types[agent_name] == 'with_strucutured_outputs':
