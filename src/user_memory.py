@@ -82,19 +82,20 @@ class GlobalLocalThreadUserMemory():
 
 
     def add_message_to_history(self, thread_id: str, role: str, content: str):
-        msg = json.dumps({"role": role, "content": content})
+        msg = json.dumps({"role": role, "content": content},ensure_ascii=False)
         self.redis.rpush(self._get_thread_history_key(thread_id), msg)
         self.redis.expire(self._get_thread_history_key(thread_id), self.ttl)
 
     def add_wonder_to_history(self, thread_id: str, user_message: str, reason: str):
         msg = json.dumps({"role": 'wonder_moment', "content": f'Сообщение пользователя: {user_message}'\
-                                                              f'Почему момент удивительный: {reason}'}) 
+                                                              f'Почему момент удивительный: {reason}'},
+                         ensure_ascii=False) 
         
         self.redis.rpush(self._get_thread_wonder_key(thread_id), msg)
         self.redis.expire(self._get_thread_wonder_key(thread_id), self.ttl)
     
     # def add_remember_to_history(self, thread_id: str, user_message: str):
-    #     msg = json.dumps({"role": 'remember_moment', "content": f'Сообщение пользователя: {user_message}'}) 
+    #     msg = json.dumps({"role": 'remember_moment', "content": f'Сообщение пользователя: {user_message}'}, ensure_ascii=False) 
     #     self.redis.rpush(self._get_thread_remember_key(thread_id), msg)
     #     self.redis.expire(self._get_thread_remember_key(thread_id), self.ttl)
     
@@ -104,7 +105,7 @@ class GlobalLocalThreadUserMemory():
         1. В контексте конкретного треда (для истории треда).
         2. В глобальном списке пользователя (чтобы можно было достать все темы сразу).
         """
-        msg_thread = json.dumps({"summary": summary, 'theme': theme})
+        msg_thread = json.dumps({"summary": summary, 'theme': theme}, ensure_ascii=False)
         thread_key = self._get_user_thread_summary_key(user_id, thread_id)
         self.redis.rpush(thread_key, msg_thread)
         self.redis.expire(thread_key, self.ttl)
@@ -116,7 +117,7 @@ class GlobalLocalThreadUserMemory():
             "theme": theme, 
             "thread_id": thread_id,
             "created_at": datetime.now().isoformat()
-        })
+        }, ensure_ascii=False)
         global_key = self._get_user_global_summaries_key(user_id)
         self.redis.rpush(global_key, msg_global)
 
@@ -139,7 +140,7 @@ class GlobalLocalThreadUserMemory():
                 "msg_count": 0
             }
 
-            self.redis.set(key, json.dumps(meta))
+            self.redis.set(key, json.dumps(meta, ensure_ascii=False))
             return {
                 "thread_id": new_thread_id,
                 "previous_thread_id": None,
@@ -171,7 +172,7 @@ class GlobalLocalThreadUserMemory():
             meta["total_pause_sum"] = 0
             meta["msg_count"] = 1
             
-            self.redis.set(key, json.dumps(meta))
+            self.redis.set(key, json.dumps(meta, ensure_ascii=False))
             
             return {
                 "thread_id": new_thread_id,
@@ -180,7 +181,7 @@ class GlobalLocalThreadUserMemory():
             }
         else:
             logger.info(f'[IN OLD THREAD]')
-            self.redis.set(key, json.dumps(meta))
+            self.redis.set(key, json.dumps(meta, ensure_ascii=False))
             return {
                 "thread_id": meta["current_thread_id"],
                 "previous_thread_id": None,
