@@ -124,10 +124,6 @@ async def run_default_assistant(message: types.Message, text: str, user_id: str,
         thread_memory.add_message_to_history(thread_info['thread_id'], role='assistant', content=assistant_response)
         
         await send_chunked_message(message, assistant_response)
-        #chunks = split_long_message(assistant_response)
-        #for chunk in chunks:
-        #    chunk = chunk.replace('**',"*")
-        #    await message.answer(chunk, parse_mode="Markdown")
             
     except Exception as e:
         logger.error(f'[BUG in Default Assistant] {e}', exc_info=True)
@@ -308,11 +304,13 @@ async def chat(message: types.Message, state: FSMContext, bot: Bot):
     try:
         await message.answer("⏳ Агент работает...")
         async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
-            answer = await tgc_mas.ainvoke({'user_id': user_id, 'input': text, 'date': datetime.now(TIMEZONE).isoformat()})
-        chunks = split_long_message(answer)
-        for chunk in chunks:
-            chunk = chunk.replace('**',"*")
-            await message.answer(chunk, parse_mode="Markdown")
+            assistant_response = await tgc_mas.ainvoke({'user_id': user_id, 'input': text, 'date': datetime.now(TIMEZONE).isoformat()})
+        
+        await send_chunked_message(message, assistant_response)
+        #chunks = split_long_message(answer)
+        #for chunk in chunks:
+        #    chunk = chunk.replace('**',"*")
+        #    await message.answer(chunk, parse_mode="Markdown")
 
     except Exception as e:
         logger.debug(f'[BUG] {e}')

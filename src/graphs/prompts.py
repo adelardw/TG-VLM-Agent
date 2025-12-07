@@ -110,7 +110,8 @@ news_summary_agent_prompt = ChatPromptTemplate.from_messages([
 
 make_full_news_prompt = ChatPromptTemplate.from_messages([
     ("system", make_full_news_prompt),
-    ("human", "Суммаризация нескольких новостей: {news}")]
+    ("human", "Контекст из инетрнета: {news}" \
+              "Запрос пользователя: {input}")]
 )
 
 web_agent_prompt = RunnableLambda(lambda x: image_text_prompt(web_agent_pmt,  x))

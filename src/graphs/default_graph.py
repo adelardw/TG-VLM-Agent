@@ -91,9 +91,7 @@ async def recall_node(state):
                 
                 query_embedding = np.array(await embed.aembed_query(state['user_message']))
                 scores = summary_embeddings @ query_embedding
-                top_k = 3
-                if len(scores) < top_k:
-                    top_k = len(scores)
+                top_k = min(len(scores), 3)
                 
                 ind = np.argsort(scores)[-top_k:][::-1]
                 found_texts = [f"- {full_summaries[i]}" for i in ind]
