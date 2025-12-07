@@ -1,4 +1,4 @@
-
+import asyncio
 from langchain_core.prompts.chat import BaseChatPromptTemplate
 from langchain.agents import AgentExecutor, create_react_agent, create_structured_chat_agent
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -144,6 +144,40 @@ class MakeRoutingMultiAgents():
 
         return answer
 
+    async def arun(self, agent_name: str ,input: dict):
+        
+        user_id = input.get('user_id')
+        if self.agent_types[agent_name] == 'react' or self.agent_types[agent_name] == 'graph' or \
+                                    self.agent_types[agent_name] == 'create_structured_chat_agent':
+
+            answer = await self.agents[agent_name].ainvoke(input=input)['output']
+            self.agent_answer[agent_name] = {datetime.now().isoformat(): answer}
+
+        elif self.agent_types[agent_name] == 'with_strucutured_outputs':
+            answer = self.agents[agent_name].invoke(input=input)
+            tool = self.tools.get(agent_name, None)[0]
+
+            if tool:
+                tool_args = answer.model_dump()
+                sig = inspect.signature(tool)
+                if 'user_id' in sig.parameters and user_id is not None:
+                    
+                    tool_args['user_id'] = user_id
+
+                try:
+                    answer = tool(tool_args)
+                except TypeError as e:
+                    answer = tool(**tool_args)
+
+                self.agent_answer[agent_name] = {datetime.now().isoformat(): answer if answer else 'function has been called!'}
+            else:
+                self.agent_answer[agent_name] = {datetime.now().isoformat(): answer.model_dump()}
+
+        elif self.agent_types[agent_name] == 'free':
+            answer = await self.agents[agent_name].ainvoke(input=input)
+
+        return answer
+    
     def __call__(self, input: dict):
 
         activated_agent = self.router_chain.invoke(input)
@@ -152,3 +186,18 @@ class MakeRoutingMultiAgents():
         agent_result = self.run(agent_name, input=input)
         logger.info(f'>>>> ACTIVATED AGENT  RESULT <<< {agent_result}')
         return agent_result
+    
+    async def __acall__(self, input: dict):
+
+        activated_agent = await self.router_chain.ainvoke(input)
+        agent_name = activated_agent.agent_name
+        logger.info(f'>>>> ACTIVATED AGENT <<< {agent_name}')
+        agent_result = await self.arun(agent_name, input=input)
+        logger.info(f'>>>> ACTIVATED AGENT  RESULT <<< {agent_result}')
+        return agent_result
+    
+    def invoke(self, input: dict):
+        return self(input)
+    
+    async def ainvoke(self, input: dict):
+        return await self.__acall__(input)

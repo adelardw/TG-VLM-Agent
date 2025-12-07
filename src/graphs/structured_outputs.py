@@ -10,6 +10,32 @@ class SearchStructuredOutputs(BaseModel):
     search_query: str = Field(..., description='Поисковый запрос из запроса пользователя')
 
 
+class SummarizeStructuredOutputs(BaseModel):
+    theme: str = Field(..., description='Тема общения с ассистентом.' \
+                                        'Верни None, если диалог вообше не конструктивный')
+
+    user_query: str | None = Field(..., description='Обобщенная просьба пользователя. Пользорватель может начать спамить - это ни в коем случае не записывай сюда.'\
+                                                    'Верни None, если диалог вообше не конструктивный')
+
+    summary: str | None= Field(..., description='Суммаризация всего диалога, кратко, но чтобы можно было легко вспомнить'\
+                                                   'Верни None, если диалог вообше не конструктивный')
+
+class MemoryRememberStructuredOutputs(BaseModel):
+    need_remember: bool = Field(..., description='True, если нужно запомнить в долгосрочную память. False - иначе')
+
+class MemoryRecallStructuredOutputs(BaseModel):
+    need_recall: bool = Field(..., description='True, если пользователь намекает что - то вспомнить. False - иначе')
+
+class MemoryWonderStructuredOutputs(BaseModel):
+    need_remember: bool = Field(..., description='True, если момент кажется удивительным, и требует внимания для будущего, который нужно однозначно запомнить.'\
+                                                 'False - иначе')
+    reason: str = Field(..., description='То, почему тебе показался момент удивительным')
+
+class MemoryFindStructuredOutputs(BaseModel):
+    true_context: bool = Field(..., description='True, если текущее воспоминание из памяти подходит под контекст.False - иначе')
+
+
+
 class Elemetns(BaseModel):
     id: int = Field(..., description='Индекс элемента')
     description: int = Field(..., description='Индекс элемента')

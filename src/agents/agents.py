@@ -15,7 +15,6 @@ from config import OPEN_ROUTER_API_KEY
 
 llm = OpenRouterChat(api_key=OPEN_ROUTER_API_KEY)
 
-
 tgc_mas = MakeRoutingMultiAgents(llm, controller_agent_system_prompt)
 
 

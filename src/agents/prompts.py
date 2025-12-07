@@ -29,14 +29,14 @@ app_opener_agent_system_prompt = """Ты -  {agent_name}, персональны
                                                     SYSTEM_APP_LIST=APP_LIST)
 
 
-calendar_agent_system_prompt = """Ты -  {agent_name}, персональный менеджер пользователя. Текущая дата: {date}.
+calendar_agent_system_prompt = """Ты -  {agent_name}, персональный менеджер пользователя.
 Ты умеешь ставить события в календарь, удалять их, делать пометке в блокноте.
 В твои задачи входит: {tasks}. Ответ должен быть строго той Pydantic схемы, которая представлена""".format(agent_name=AGENT_NAME,
-                                        tasks=CALENDAR_TASKS,
-                                        date = datetime.datetime.now(tz=TIMEZONE))
+                                        tasks=CALENDAR_TASKS) + ' \nТекущая дата: {date}. \n'
 
 weather_agent_system_prompt = """Ты -  {agent_name}, умеющий находить прогноз погоды для задаваемого пользователем города.
-В твои задачи входит: {tasks}. Ответ должен быть сгенеренирован в виде связанного текста о погоде""".format(agent_name=AGENT_NAME,tasks=WEATHER_TASKS)
+В твои задачи входит: {tasks}. Ответ должен быть сгенеренирован в виде связанного текста о погоде""".\
+    format(agent_name=AGENT_NAME,tasks=WEATHER_TASKS) + ' \nТекущая дата: {date}. \n'
 
 
 weather_agent_system_prompt = """Ты -  {agent_name}, умеющий находить прогноз погоды для задаваемого пользователем города.
@@ -78,10 +78,10 @@ controller_agent_system_prompt = """ Ты - стратег! Ты всё врем
 поможет ответить на входной запрос пользователя! Ответ дай строго в соответсвии со схемой"""
 
 controller_agent_system_prompt = SystemMessage(content=controller_agent_system_prompt)
-human_template = HumanMessagePromptTemplate.from_template(human_template)
+human_template_ = HumanMessagePromptTemplate.from_template(human_template)
 
 controller_agent_system_prompt = ChatPromptTemplate.from_messages([controller_agent_system_prompt,
-                                                                   human_template])
+                                                                   human_template_])
 
 
 file_system_agent_system_prompt = ChatPromptTemplate.from_template(file_system_agent_system_prompt + react_prompt)
@@ -90,4 +90,5 @@ app_opener_agent_system_prompt = ChatPromptTemplate.from_template(app_opener_age
 weather_agent_system_prompt =  ChatPromptTemplate.from_template(weather_agent_system_prompt + react_prompt)
 gmail_agent_system_prompt = ChatPromptTemplate.from_template(gmail_agent_system_prompt + react_prompt)
 
-calendar_agent_system_prompt = ChatPromptTemplate.from_messages([calendar_agent_system_prompt, human_template])
+calendar_agent_system_prompt = ChatPromptTemplate.from_messages([("system", calendar_agent_system_prompt), 
+                                                                 ("human", human_template)])

@@ -744,13 +744,40 @@ def image_text_prompt(sys_prompt: Optional[str], input_dict: dict):
     if image_url:= input_dict.get('image_url', None):
         if isinstance(image_url, list):
             for link in image_url:
-                    contents += [{"type": "image_url",'image_url': {'url': link}}]
+                contents += [{"type": "image_url",'image_url': {'url': link}}]
         else:
             contents += [{"type": "image_url",'image_url': {'url': image_url}}]
 
     return [SystemMessage(content=sys_prompt) ,
             HumanMessage(content=contents)] if sys_prompt else [HumanMessage(content=contents)]
 
+
+def format_history_for_llm(history_list: list[str],
+                           wonder_list: list[str]) -> str:
+    """
+    Превращает список JSON-строк в текст вида:
+    User: Привет
+    Assistant: Привет!
+    """
+    dialogue_text = ""
+    for item in history_list:
+        try:
+            data = json.loads(item) 
+            role = data.get("role", "unknown").capitalize() # "user" -> "User"
+            content = data.get("content", "")
+            dialogue_text += f"{role}: {content}\n"
+        except json.JSONDecodeError:
+            continue
+    
+    for wonderwavflya in wonder_list:
+        try:
+            data = json.loads(wonderwavflya)
+            content = data.get("content")
+            dialogue_text += f">>> INSIGHT (Инсайт): {content}\n"
+        except json.JSONDecodeError:
+            continue
+        
+    return dialogue_text
 
 user_agents = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
