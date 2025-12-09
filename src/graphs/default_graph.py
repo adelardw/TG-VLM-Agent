@@ -36,8 +36,30 @@ async def router(state):
     logger.info('[ROUTER]')
     if state["make_history_summary"]:
         return "summarize"
+    
+    if len(state['local_context']) >= thread_memory.context_local_window:
+        return "local_summarize"
     else:
         return "wonder"
+
+async def local_summarize_node(state):
+    logger.info('[LOCAL SUMMARIZE]')
+    user_id = state['user_id']
+    thread_id = state['thread_id']
+    history = thread_memory.get_local_history(thread_id)
+    wonder_history = thread_memory.get_wonder_thread_moments(thread_id)
+    
+    history = format_history_for_llm(history, wonder_history)
+    
+    summary_results = await summarize_assistant.ainvoke({'history': history})
+    thread_memory.clear_thread_local_history(thread_id)
+    thread_memory._add_msg_local_history(thread_id,'assistant', summary_results.summary)
+    
+    
+    state['local_context'] = thread_memory.get_local_history(thread_id)
+    
+    
+    return state
 
 async def summarize_node(state):
     logger.info('[SUMMARIZE]')
@@ -86,10 +108,13 @@ async def recall_node(state):
             full_summaries = [s['summary'] for s in summaries_data if s.get('summary')]
             
             if full_summaries:
-                
+
                 summary_embeddings = np.array(await embed.aembed_documents(full_summaries))
-                
-                query_embedding = np.array(await embed.aembed_query(state['user_message']))
+                query = state['user_message']
+                full_local_ctx = [ f'- {message["role"]} : {message["content"]} ' for message in state['local_context']] \
+                                  if state['local_context'] else []
+                fully_local_context = query + '\n'.join(full_local_ctx)
+                query_embedding = np.array(await embed.aembed_query(fully_local_context))
                 scores = summary_embeddings @ query_embedding
                 top_k = min(len(scores), 3)
                 
@@ -125,17 +150,19 @@ workflow.add_node("summarize", summarize_node)
 workflow.add_node("wonder", wonder_node)
 workflow.add_node("recall", recall_node)
 workflow.add_node("answer", answer_node)
-
+workflow.add_node("local_summarize", local_summarize_node)
 
 workflow.add_conditional_edges(
     START,
     router,
     {
         "summarize": "summarize",
-        "wonder": "wonder"
+        "wonder": "wonder",
+        "local_summarize": "local_summarize"
     }
 )
 
+workflow.add_edge("local_summarize", "wonder")
 workflow.add_edge("summarize", "wonder") 
 workflow.add_edge("wonder", "recall")
 workflow.add_edge("recall", "answer")

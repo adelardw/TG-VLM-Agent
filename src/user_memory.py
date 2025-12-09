@@ -11,8 +11,9 @@ class GlobalLocalThreadUserMemory():
     def __init__(self, redis_client: Union[redis.StrictRedis, redis.Redis], 
                  ttl: Union[int, float] = 60 * 60 * 24 * 30,
                  context_local_window: int = 5, 
-                 criterion_val: Union[int, float] = 600,):
-        
+                 criterion_val: Union[int, float] = 600):
+
+        assert context_local_window > 1
         self.context_local_window = context_local_window 
         self.criterion_val = criterion_val
         self.redis = redis_client
@@ -34,20 +35,28 @@ class GlobalLocalThreadUserMemory():
     def _get_user_thread_summary_key(self, user_id:str, thread_id: str) -> str:
         return f"gum:user_id:{user_id}:thread:{thread_id}:history"
     
+    def _get_thread_local_history_key(self, thread_id: str):
+        return f"gum:thread:{thread_id}:local_history"
+        
+    
     def _get_user_global_summaries_key(self, user_id: str) -> str:
         """Список всех саммари пользователя со всех тредов"""
         return f"gum:user_id:{user_id}:all_summaries"
 
 
-    def get_local_history(self, thread_id: str, limit: int = 5) -> list[str]:
-        msgs = self.redis.lrange(self._get_thread_history_key(thread_id), -limit if limit != 0 else 0, -1)
+    def get_local_history(self, thread_id: str) -> list[str]:
+        msgs = self.redis.lrange(self._get_thread_local_history_key(thread_id), 0,  -1)
         if msgs:
-            return [m.decode('utf-8') for m in msgs]
+            return [json.loads(m.decode('utf-8')) for m in msgs]
         else:
             return []
     
     def get_thread_history(self, thread_id: str) -> list[str]:
-        return self.get_local_history(thread_id, 0)
+        msgs = self.redis.lrange(self._get_thread_history_key(thread_id), 0,  -1)
+        if msgs:
+            return [json.loads(m.decode('utf-8')) for m in msgs]
+        else:
+            return []
     
 
 
@@ -80,11 +89,37 @@ class GlobalLocalThreadUserMemory():
                     continue
         return result
 
-
-    def add_message_to_history(self, thread_id: str, role: str, content: str):
+    def _add_msg_global_history(self, thread_id: str, role: str, content: str):
         msg = json.dumps({"role": role, "content": content},ensure_ascii=False)
         self.redis.rpush(self._get_thread_history_key(thread_id), msg)
         self.redis.expire(self._get_thread_history_key(thread_id), self.ttl)
+        
+    def _add_msg_local_history(self, thread_id: str, role: str, content: str):
+        msg = json.dumps({"role": role, "content": content},ensure_ascii=False)
+        self.redis.rpush(self._get_thread_local_history_key(thread_id), msg)
+        self.redis.expire(self._get_thread_local_history_key(thread_id), self.ttl)
+        
+    def add_message_to_history(self, thread_id: str, role: str, content: str):
+        self._add_msg_global_history(thread_id, role, content)
+        self._add_msg_local_history(thread_id, role, content)
+        
+        
+    def clear_thread_local_history(self, thread_id: str):
+        """
+        Полностью удаляет историю сообщений конкретного треда из Redis.
+        Используется после генерации саммари для очистки контекста.
+        """
+        self.redis.delete(self._get_thread_local_history_key(thread_id))
+        logger.info(f'[HISTORY CLEARED] History for thread {thread_id} has been deleted.')
+        
+    
+    def clear_thread_global_history(self, thread_id: str):
+        """
+        Полностью удаляет историю сообщений конкретного треда из Redis.
+        Используется после генерации саммари для очистки контекста.
+        """
+        self.redis.delete(self._get_thread_history_key(thread_id))
+        logger.info(f'[HISTORY CLEARED] History for thread {thread_id} has been deleted.')
 
     def add_wonder_to_history(self, thread_id: str, user_message: str, reason: str):
         msg = json.dumps({"role": 'wonder_moment', "content": f'Сообщение пользователя: {user_message}'\
@@ -159,7 +194,10 @@ class GlobalLocalThreadUserMemory():
         meta["last_msg_time"] = message_datetime.isoformat()
         
         avg_pause = meta["total_pause_sum"] / meta["msg_count"] if meta["msg_count"] > 0 else 0
+        logger.info(f'[AVG PAUSE VALUE] {avg_pause}')
+        logger.info(f'[AVG PAUSE VALUE] {self.criterion_val}')
         is_avg_high = avg_pause > self.criterion_val
+        logger.info(f'[AVG PAUSE HIGH] {is_avg_high}')
         is_new_day = message_datetime.date() > last_time.date()
         
         if is_avg_high or is_new_day:
