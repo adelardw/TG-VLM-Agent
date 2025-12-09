@@ -307,17 +307,10 @@ async def chat(message: types.Message, state: FSMContext, bot: Bot):
             assistant_response = await tgc_mas.ainvoke({'user_id': user_id, 'input': text, 'date': datetime.now(TIMEZONE).isoformat()})
         
         await send_chunked_message(message, assistant_response)
-        #chunks = split_long_message(answer)
-        #for chunk in chunks:
-        #    chunk = chunk.replace('**',"*")
-        #    await message.answer(chunk, parse_mode="Markdown")
 
     except Exception as e:
         logger.debug(f'[BUG] {e}')
-        await cmd_menu(message)
-
-    #await state.set_state(BotStates.main_menu)
-    #await cmd_menu(message)
+        await cmd_menu(message) 
 
 
 @router.message(F.text | F.voice | F.photo)

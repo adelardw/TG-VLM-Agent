@@ -195,7 +195,6 @@ class GlobalLocalThreadUserMemory():
         
         avg_pause = meta["total_pause_sum"] / meta["msg_count"] if meta["msg_count"] > 0 else 0
         logger.info(f'[AVG PAUSE VALUE] {avg_pause}')
-        logger.info(f'[AVG PAUSE VALUE] {self.criterion_val}')
         is_avg_high = avg_pause > self.criterion_val
         logger.info(f'[AVG PAUSE HIGH] {is_avg_high}')
         is_new_day = message_datetime.date() > last_time.date()
