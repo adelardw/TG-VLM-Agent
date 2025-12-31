@@ -16,6 +16,7 @@ class DefaultAssistant(TypedDict):
     global_context: list[str]
     image_url: list[str]
     generation: str 
+    recalled_images: list
     
     user_id: str
     thread_id: str

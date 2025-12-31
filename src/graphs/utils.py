@@ -2,7 +2,7 @@ from urllib.parse import urlparse
 import base64
 from collections import deque
 from PIL import Image, ImageDraw, ImageFont
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from typing import Optional, Literal
 import re
 import json
@@ -19,7 +19,7 @@ from selenium.webdriver.common.keys import Keys
 
 
 import base64
-from typing import Literal, Optional, List, Union, Dict
+from typing import Literal, Optional, List, Union, Dict, Any
 from graphs.structured_outputs import WebStructuredOutputs
 from beautylogger import logger
 from datetime import datetime
@@ -735,22 +735,78 @@ def search(search_query: str):
 
 
 
-def image_text_prompt(sys_prompt: Optional[str], input_dict: dict):
+def image_text_prompt(sys_prompt: Optional[str], input_dict: dict, history_key: str ):
 
     contents = []
+    history = input_dict.get(history_key, [])
+    
     for key, value in input_dict.items():
+
+        if key == history_key:
+            continue
+        
         if key != 'image_url':
             contents.append({"type": "text",'text': value})
-
-    if image_url:= input_dict.get('image_url', None):
-        if isinstance(image_url, list):
-            for link in image_url:
-                contents += [{"type": "image_url",'image_url': {'url': link}}]
         else:
-            contents += [{"type": "image_url",'image_url': {'url': image_url}}]
+            image_urls = value if isinstance(value, list) else [value]
+            for link in image_urls:
+                contents.append({"type": "image_url", "image_url": {"url": link}})
+                
 
-    return [SystemMessage(content=sys_prompt) ,
-            HumanMessage(content=contents)] if sys_prompt else [HumanMessage(content=contents)]
+    messages = []
+    if sys_prompt:
+        messages.append(SystemMessage(content=sys_prompt))
+    
+    messages.extend(history)
+    if contents:
+        messages.append(HumanMessage(content=contents))
+    
+    return messages
+
+
+def prepare_cache_messages_to_langchain(history_list: list[dict[str, Any]]):
+    langchain_history = []
+    
+    for i, message in enumerate(history_list):
+        role = message.get('role')
+        content_str = message.get('content', '[Нет текста]')
+        metadata = message.get('metadata') or {}
+        
+        time_str = f"Time: {metadata['time']} | " if metadata.get('time') else ""
+        indexed_content = f"[MSG_ID: {i}] | {time_str}{content_str}"
+        
+        images = metadata.get('images')
+        content_blocks = []
+        
+        if images:
+            content_blocks = [{"type": "text", "text": indexed_content}]
+            
+            if isinstance(images, list):
+                for img_url in images:
+                    content_blocks.append({
+                        "type": "image_url",
+                        "image_url": {"url": img_url} 
+                    })
+            else:
+                content_blocks.append({
+                    "type": "image_url",
+                    "image_url": {"url": images}
+                })
+        else:
+            content_blocks = indexed_content
+
+
+        if role == 'system':
+            langchain_history.append(SystemMessage(content=content_blocks))
+
+        elif role in {'assistant'}:
+            langchain_history.append(AIMessage(content=content_blocks))
+
+        elif role in {'human', 'user'}:
+            langchain_history.append(HumanMessage(content=content_blocks))
+                
+    return langchain_history
+    
 
 
 def format_history_for_llm(history_list: List[Union[str, Dict]],

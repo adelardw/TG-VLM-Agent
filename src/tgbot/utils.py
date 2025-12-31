@@ -1,4 +1,5 @@
 import redis
+import re
 from datetime import datetime,timedelta
 from beautylogger import logger
 from config import TIMEZONE,ADMIN_ID, WHITE_LIST
@@ -31,6 +32,23 @@ def split_short_long_message(text: str, max_length_caption: int = TELEGRAM_MAX_M
     else:
 
         return None
+
+def clean_assistant_answer(text: str) -> str:
+    """
+    Удаляет технические маркеры MSG_ID и Time из финального ответа.
+    Примеры:
+    - MSG_ID: 13 | Time: 2025-12-28T19:07:45+00:00 | 
+    - [MSG_ID: 2] | Time: 2025-12-28T18:59:26+00:00 | 
+    """
+    if not text:
+        return text
+    
+    pattern = r"\[?MSG_ID: \d+\]? \| Time: [^|]+ \| "
+    
+    cleaned_text = re.sub(pattern, "", text)
+    cleaned_text = "\n".join([line.lstrip() for line in cleaned_text.splitlines()])
+    
+    return cleaned_text.strip()
 
 def split_long_message(text: str, max_length: int = TELEGRAM_MAX_MESSAGE_LENGTH) -> list[str]:
     """

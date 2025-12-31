@@ -6,9 +6,11 @@ import uuid
 import redis
 from .beautylogger import logger
 from typing import TypedDict, List, Optional, Union, Any
+from langchain.embeddings.base import Embeddings
 
 class GlobalLocalThreadUserMemory():
-    def __init__(self, redis_client: Union[redis.StrictRedis, redis.Redis], 
+    def __init__(self, redis_client: Union[redis.StrictRedis, redis.Redis],
+                 embed: Embeddings ,
                  ttl: Union[int, float] = 60 * 60 * 24 * 30,
                  context_local_window: int = 5, 
                  criterion_val: Union[int, float] = 600):
@@ -18,7 +20,7 @@ class GlobalLocalThreadUserMemory():
         self.criterion_val = criterion_val
         self.redis = redis_client
         self.ttl = ttl
-
+        self.embed = embed
 
     def _get_user_key(self, user_id: str) -> str:
         return f"gum:user:{user_id}:meta"
@@ -47,7 +49,7 @@ class GlobalLocalThreadUserMemory():
     def get_local_history(self, thread_id: str) -> list[str]:
         msgs = self.redis.lrange(self._get_thread_local_history_key(thread_id), 0,  -1)
         if msgs:
-            return [json.loads(m.decode('utf-8')) for m in msgs]
+            return [json.loads(m.decode('utf-8')) for m in msgs][-self.context_local_window:]
         else:
             return []
     
@@ -128,38 +130,28 @@ class GlobalLocalThreadUserMemory():
         
         self.redis.rpush(self._get_thread_wonder_key(thread_id), msg)
         self.redis.expire(self._get_thread_wonder_key(thread_id), self.ttl)
+        
     
-    # def add_remember_to_history(self, thread_id: str, user_message: str):
-    #     msg = json.dumps({"role": 'remember_moment', "content": f'Сообщение пользователя: {user_message}'}, ensure_ascii=False) 
-    #     self.redis.rpush(self._get_thread_remember_key(thread_id), msg)
-    #     self.redis.expire(self._get_thread_remember_key(thread_id), self.ttl)
-    
-    def add_user_thread_summary(self, summary: str, theme: str, user_id: str, thread_id: str,
-                                metadata: Optional[dict[str, Any]] = None):
-        """
-        Сохраняет саммари в двух местах:
-        1. В контексте конкретного треда (для истории треда).
-        2. В глобальном списке пользователя (чтобы можно было достать все темы сразу).
-        """
-        msg_thread = json.dumps({"summary": summary, 'theme': theme, "metadata": metadata},
-                                ensure_ascii=False) if metadata else \
-                     json.dumps({"summary": summary, 'theme': theme}, ensure_ascii=False) 
-                    
-        thread_key = self._get_user_thread_summary_key(user_id, thread_id)
-        self.redis.rpush(thread_key, msg_thread)
-        self.redis.expire(thread_key, self.ttl)
-
+    async def add_user_thread_summary(self, summary: str, user_id: str, thread_id: str, metadata: dict[str, Any]):
+        
+        vector = await self.embed.aembed_query(summary)
         msg_global = json.dumps({
             "summary": summary, 
-            "theme": theme, 
             "thread_id": thread_id,
-            "created_at": datetime.now().isoformat() if not metadata else metadata['time']
+            "created_at": metadata['time'],
+            "vector": vector,
         }, ensure_ascii=False)
+    
+    
         global_key = self._get_user_global_summaries_key(user_id)
         self.redis.rpush(global_key, msg_global)
-
         self.redis.expire(global_key, self.ttl)
-        
+    
+    def get_all_summaries_for_search(self, user_id: str):
+        key = self._get_user_global_summaries_key(user_id)
+        raw_msgs = self.redis.lrange(key, 0, -1)
+        return [json.loads(m.decode('utf-8')) for m in raw_msgs]
+    
     def check_and_init_thread(self, user_id: str, message_datetime: datetime) -> dict:
         """
         Главная логика: проверяет критерии и возвращает ID потока + флаг need_summary.

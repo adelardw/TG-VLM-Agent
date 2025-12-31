@@ -13,7 +13,8 @@ import numpy as np
 import soundfile as sf
 import librosa
 from .middleware import AlbumMiddleware
-from datetime import datetime
+from datetime import datetime, timedelta
+from time import perf_counter
 from vega.vega_stream import VEGA
 from agents import tgc_mas
 from graphs import tgc_default
@@ -23,7 +24,7 @@ from tgbot.utils import (split_long_message,
                          grant_trial_subscription,
                          grant_30days_subscription,
                          check_subscription,
-                         encode_image_to_base64)
+                         encode_image_to_base64, clean_assistant_answer)
 
 import os
 from src.users_cache import cache_db, thread_memory
@@ -47,7 +48,7 @@ async def send_chunked_message(message: types.Message, text: str):
     1. Пытается отправить как Markdown (жирный текст работает).
     2. Если ошибка форматирования или разбиения — отправляет как чистый текст.
     """
-    # Сначала пробуем разбить и отформатировать
+    text = clean_assistant_answer(text)
     text = text.replace("***", "*").replace("**", "*").replace("#","")
     chunks = split_long_message(text)
     
@@ -99,12 +100,15 @@ async def run_default_assistant(message: types.Message, text: str, user_id: str,
     """
     Функция запускает граф tgc_default и отправляет ответ пользователю.
     """
+    
     try:
         thread_info = thread_memory.check_and_init_thread(user_id=user_id, message_datetime=message.date)
-        local_context = thread_memory.get_local_history(thread_info['thread_id'])
 
         thread_memory.add_message_to_history(thread_info['thread_id'], role='user', content=text,
-                                             metadata={'images': images } if images else None)
+                                             metadata={'images': images, 'time': message.date.isoformat() } if images else 
+                                                      {'time': message.date.isoformat()})
+        local_context = thread_memory.get_local_history(thread_info['thread_id'])
+        
 
         config = {"configurable": {"thread_id": thread_info['thread_id']}}
         
@@ -115,16 +119,25 @@ async def run_default_assistant(message: types.Message, text: str, user_id: str,
             "previous_thread_id": thread_info['previous_thread_id'],
             "local_context": local_context,
             "image_url": images or None,
-            'user_message': text
+            'user_message': text,
+            "time": message.date
         }
 
+        start = perf_counter()
+        
         async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
             answer_state = await tgc_default.ainvoke(default_input, config=config)
         
-        assistant_response = answer_state.get('generation', 'Извините, я задумался.')
-        thread_memory.add_message_to_history(thread_info['thread_id'], role='assistant', content=assistant_response)
+        end = perf_counter() - start
+
+        schema_obj = answer_state.get('generation')
         
-        await send_chunked_message(message, assistant_response)
+        
+        raw_text = schema_obj.final_answer if schema_obj else "Извините, я не смог сформулировать ответ."
+        thread_memory.add_message_to_history(thread_info['thread_id'], role='assistant', content=raw_text,
+                                             metadata={'time': (message.date + timedelta(seconds=int(end))).isoformat() })
+        
+        await send_chunked_message(message, raw_text)
             
     except Exception as e:
         logger.info(f'[BUG in Default Assistant] {e}')
