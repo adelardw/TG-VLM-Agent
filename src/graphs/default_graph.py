@@ -231,8 +231,8 @@ async def answer_node(state):
     web_data = []
     if web_info:
         web_data = [{"role": "system", "content": f"АКТУАЛЬНЫЕ ДАННЫЕ ИЗ ИНТЕРНЕТА:\n{web_info}"}]
-    
-    logger.info(state.get('global_context', []))
+        logger.info(f'[WEB CTX] {web_data}')
+
     history_lc = prepare_cache_messages_to_langchain(state.get('global_context', []),
                                                      local=False)
 
