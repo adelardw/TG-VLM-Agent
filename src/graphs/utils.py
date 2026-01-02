@@ -765,47 +765,51 @@ def image_text_prompt(sys_prompt: Optional[str], input_dict: dict, history_key: 
 
 
 def prepare_cache_messages_to_langchain(history_list: list[dict[str, Any]]):
-    langchain_history = []
-    
-    for i, message in enumerate(history_list):
-        role = message.get('role')
-        content_str = message.get('content', '[Нет текста]')
-        metadata = message.get('metadata') or {}
-        
-        time_str = f"Time: {metadata['time']} | " if metadata.get('time') else ""
-        indexed_content = f"[MSG_ID: {i}] | {time_str}{content_str}"
-        
-        images = metadata.get('images')
-        content_blocks = []
-        
-        if images:
-            content_blocks = [{"type": "text", "text": indexed_content}]
-            
-            if isinstance(images, list):
-                for img_url in images:
+    if history_list:
+        langchain_history = [SystemMessage(content='--- Начало Истории Сообщений ---')]
+
+        for i, message in enumerate(history_list):
+            role = message.get('role')
+            content_str = message.get('content', '[Нет текста]')
+            metadata = message.get('metadata') or {}
+
+            time_str = f"Time: {metadata['time']} | " if metadata.get('time') else ""
+            indexed_content = f"[MSG_ID: {i}] | {time_str}{content_str}"
+
+            images = metadata.get('images')
+            content_blocks = []
+
+            if images:
+                content_blocks = [{"type": "text", "text": indexed_content}]
+
+                if isinstance(images, list):
+                    for img_url in images:
+                        content_blocks.append({
+                            "type": "image_url",
+                            "image_url": {"url": img_url} 
+                        })
+                else:
                     content_blocks.append({
                         "type": "image_url",
-                        "image_url": {"url": img_url} 
+                        "image_url": {"url": images}
                     })
             else:
-                content_blocks.append({
-                    "type": "image_url",
-                    "image_url": {"url": images}
-                })
-        else:
-            content_blocks = indexed_content
+                content_blocks = indexed_content
 
 
-        if role == 'system':
-            langchain_history.append(SystemMessage(content=content_blocks))
+            if role == 'system':
+                langchain_history.append(SystemMessage(content=content_blocks))
 
-        elif role in {'assistant'}:
-            langchain_history.append(AIMessage(content=content_blocks))
+            elif role in {'assistant'}:
+                langchain_history.append(AIMessage(content=content_blocks))
 
-        elif role in {'human', 'user'}:
-            langchain_history.append(HumanMessage(content=content_blocks))
-                
-    return langchain_history
+            elif role in {'human', 'user'}:
+                langchain_history.append(HumanMessage(content=content_blocks))
+        
+        langchain_history.append(SystemMessage(content='--- Конец Истории Сообщений ---'))
+        return langchain_history
+    else:
+        return []
     
 
 
