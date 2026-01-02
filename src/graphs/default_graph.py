@@ -2,6 +2,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import InMemorySaver
 from datetime import datetime, timedelta
+from deprecated import deprecated 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import asyncio
 
@@ -9,10 +10,10 @@ from time import perf_counter
 import numpy as np
 from graphs.utils import search
 
-from .structured_outputs import (AnswerSchema,RecallAction,SearchStructuredOutputs,
+from .structured_outputs import (AnswerSchema,RecallAction,SearchStructuredOutputs,SelectedThreads,
                                  FactExtractionSchema,SummarizeStructuredOutputs,SearchQuerySchema)
 
-from .prompts import (recall_prompt,query_prompt,make_search_query_prompt,
+from .prompts import (recall_prompt,query_prompt,make_search_query_prompt, memory_selector_prompt,
                     summarize_prompt,default_system_prompt, fact_extraction_prompt)
 
 from .graph_states import DefaultAssistant
@@ -36,7 +37,7 @@ chat_assistant = default_system_prompt | llm.with_structured_output(AnswerSchema
 generate_query_assistant = query_prompt | llm.with_structured_output(SearchQuerySchema)
 extractor_chain = fact_extraction_prompt | llm.with_structured_output(FactExtractionSchema)
 search_agent = make_search_query_prompt | llm.with_structured_output(SearchStructuredOutputs)
-
+memory_selector = memory_selector_prompt | llm.with_structured_output(SelectedThreads)
 
 
 async def find_similar_mem_chunks(documents: list[str], query: str, top_k: int = 3):
@@ -170,37 +171,38 @@ async def recall_node(state):
         "web_query": action.web_query
     }
 
-async def memory_node(state):
+@deprecated(reason="ХУЕТА")
+async def memory_old_node(state):
 
     logger.info('[MEMORY FETCH]')
     user_id = state['user_id']
     summaries = thread_memory.get_all_summaries_for_search(user_id)
     if not summaries:
-        return state
-
+        return {"global_context": []}
     
     query_vec = np.array(await embed.aembed_query(state['search_query']))
     q_user = np.array(await embed.aembed_query(state['user_message']))
     
     results = []
-    new_global_context = []
+    raws = []
     for s in summaries:
         score_query = np.dot(query_vec, np.array(s['vector']))
         score_user = np.dot(q_user, np.array(s['vector']))
         score = max(score_query, score_user)
         logger.info(f"score: [{score}] | summary: [{s['summary']}]")
-        if score > 0.45:
+        if score > 0.65:
             results.append(s)
 
     if results:
-        best_match = sorted(results, key=lambda x: max(np.dot(query_vec, x['vector']),
+        best_matches = sorted(results, key=lambda x: max(np.dot(query_vec, x['vector']),
                                                        np.dot(q_user, x['vector'])))[-3:]
         
-        logger.info(f"[BEST MATCH FOUND] Thread: {best_match['thread_id']} | Summary: {best_match['summary']}")
+        found_ids = [bm['thread_id'] for bm in best_matches]
+        logger.info(f"[MEMORY MATCHES] Found {len(best_matches)} threads: {found_ids}")
 
 
         raws = []
-        for bm in best_match:
+        for bm in best_matches:
             raw_history = thread_memory.get_thread_history(bm['thread_id'])
         
             raws.append({"role": "system", "content": f"--- ПАМЯТЬ: ТРЕД {bm['thread_id']} ---"})
@@ -212,6 +214,57 @@ async def memory_node(state):
         
     return {"global_context": raws}
     
+
+async def memory_node(state):
+
+    logger.info('[MEMORY FETCH]')
+    user_id = state['user_id']
+    summaries = thread_memory.get_all_summaries_for_search(user_id)
+    if not summaries:
+        return {"global_context": []}
+    
+    query_vec = np.array(await embed.aembed_query(state['search_query']))
+    q_user = np.array(await embed.aembed_query(state['user_message']))
+    
+    results = []
+    raws = []
+    for s in summaries:
+        score_query = np.dot(query_vec, np.array(s['vector']))
+        score_user = np.dot(q_user, np.array(s['vector']))
+        score = max(score_query, score_user)
+        logger.info(f"score: [{score}] | summary: [{s['summary']}]")
+        if score > 0.65:
+            results.append(s)
+            
+    if not results:
+        logger.info("[MEMORY] No vector matches found above threshold.")
+        return {"global_context": []}
+
+    formatted_summaries = ""
+    for s in results:
+        formatted_summaries += f"ID: {s['thread_id']} | Суть: {s['summary']}\n"
+
+    selection = await memory_selector.ainvoke({
+            "user_message": state['user_message'],
+            "summaries_list": formatted_summaries})
+
+    raws = []
+    if selection.relevant_thread_ids:
+        logger.info(f"[LLM MEMORY SELECTED] {selection.relevant_thread_ids}")
+        
+        for t_id in selection.relevant_thread_ids:
+            summary_item = next((s for s in summaries if s['thread_id'] == t_id), None)
+            if not summary_item: 
+                continue
+            
+            raw_history = thread_memory.get_thread_history(t_id)
+            
+            raws.append({"role": "system", "content": f"--- ПАМЯТЬ: ТРЕД {t_id} ---"})
+            raws.append({"role": "assistant", "content": f"Краткая суть: {summary_item['summary']}"})
+            raws.extend(raw_history[-7:])
+
+    return {"global_context": raws}
+        
 
 def route_after_recall(state):
     targets = []

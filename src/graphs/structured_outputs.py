@@ -33,6 +33,8 @@ class AnswerSchema(BaseModel):
     final_answer: str = Field(description="Финальный ответ пользователю.")
     reasoning: str = Field(description="Причина, почему такой ответ.")
 
+class SelectedThreads(BaseModel):
+    relevant_thread_ids: list[str] = Field(description="Список ID наиболее релевантных тредов")
 
 class SearchQuerySchema(BaseModel):
     query: str = Field(..., description="Поисковый запрос для векторной базы данных, чтобы найти контекст для ответа на сообщение пользователя. Запрос должен быть автономным (содержать сущности, а не местоимения).")
