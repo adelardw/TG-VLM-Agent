@@ -181,6 +181,7 @@ async def memory_node(state):
     q_user = np.array(await embed.aembed_query(state['user_message']))
     
     results = []
+    new_global_context = []
     for s in summaries:
         score_query = np.dot(query_vec, np.array(s['vector']))
         score_user = np.dot(q_user, np.array(s['vector']))
