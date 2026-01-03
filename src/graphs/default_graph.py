@@ -139,7 +139,7 @@ async def summarize_node(state):
 
 async def web_search_node(state):
     logger.info('[WEB SEARCH]')
-    search_results = await asyncio.to_thread(search, state['web_query'])
+    search_results = await asyncio.to_thread(search, state['web_query'] or state['user_message'])
     if not search_results:
         return state
 
@@ -171,49 +171,6 @@ async def recall_node(state):
         "web_query": action.web_query
     }
 
-@deprecated(reason="ХУЕТА")
-async def memory_old_node(state):
-
-    logger.info('[MEMORY FETCH]')
-    user_id = state['user_id']
-    summaries = thread_memory.get_all_summaries_for_search(user_id)
-    if not summaries:
-        return {"global_context": []}
-    
-    query_vec = np.array(await embed.aembed_query(state['search_query']))
-    q_user = np.array(await embed.aembed_query(state['user_message']))
-    
-    results = []
-    raws = []
-    for s in summaries:
-        score_query = np.dot(query_vec, np.array(s['vector']))
-        score_user = np.dot(q_user, np.array(s['vector']))
-        score = max(score_query, score_user)
-        logger.info(f"score: [{score}] | summary: [{s['summary']}]")
-        if score > 0.65:
-            results.append(s)
-
-    if results:
-        best_matches = sorted(results, key=lambda x: max(np.dot(query_vec, x['vector']),
-                                                       np.dot(q_user, x['vector'])))[-3:]
-        
-        found_ids = [bm['thread_id'] for bm in best_matches]
-        logger.info(f"[MEMORY MATCHES] Found {len(best_matches)} threads: {found_ids}")
-
-
-        raws = []
-        for bm in best_matches:
-            raw_history = thread_memory.get_thread_history(bm['thread_id'])
-        
-            raws.append({"role": "system", "content": f"--- ПАМЯТЬ: ТРЕД {bm['thread_id']} ---"})
-            raws.append({"role": "assistant", "content": f"Краткая суть: {bm['summary']}"})
-            
-            raws.extend(raw_history[-7:])
-
-        logger.info(f'[GLOBAL CTX] {raws}')
-        
-    return {"global_context": raws}
-    
 
 async def memory_node(state):
 
@@ -233,7 +190,7 @@ async def memory_node(state):
         score_user = np.dot(q_user, np.array(s['vector']))
         score = max(score_query, score_user)
         logger.info(f"score: [{score}] | summary: [{s['summary']}]")
-        if score > 0.65:
+        if score > 0.45:
             results.append(s)
             
     if not results:
@@ -309,6 +266,7 @@ async def answer_node(state):
     response = await chat_assistant.ainvoke(input_dict)
     state['generation'] = response
     state['global_context'] = []
+    state['web_context'] = ''
     return state
         
 workflow = StateGraph(DefaultAssistant)

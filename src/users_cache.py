@@ -10,4 +10,4 @@ cache_db = redis.StrictRedis(host='localhost',port=6379,
 
 embed = OpenRouterEmbeddings(OPEN_ROUTER_API_KEY, EMBED_MODEL)
 thread_memory = GlobalLocalThreadUserMemory(cache_db, embed=embed,
-                                            ttl=60*60*24*3,criterion_val= 60*30, context_local_window=7)
+                                            ttl=60*60*24*3,criterion_val= 60*30, context_local_window=15)

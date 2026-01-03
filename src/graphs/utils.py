@@ -108,7 +108,7 @@ def search(search_query: str):
     По поисковому запросу search_query находит топ результатов поисковой выдачи
     '''
     search_engine = DDGS()
-    results = search_engine.text(search_query, region="ru-ru", max_results=3)
+    results = search_engine.text(search_query, region="wt-wt", max_results=3)
     texts = []
     for results in results:
         href = results['href']
@@ -144,12 +144,19 @@ def image_text_prompt(sys_prompt: Optional[str], input_dict: dict, history_key: 
         if key == history_key:
             continue
         
-        if key != 'image_url':
+        if (key != 'image_url') & (key != 'input_audio') & (key != 'video_url'):
             contents.append({"type": "text",'text': value})
-        else:
-            image_urls = value if isinstance(value, list) else [value]
-            for link in image_urls:
-                contents.append({"type": "image_url", "image_url": {"url": link}})
+
+        elif key == 'image_url' or key == 'video_url':
+            urls = value if isinstance(value, list) else [value]
+            for link in urls:
+                contents.append({"type": key, key: {"url": link}})
+        
+        elif key == 'input_audio':
+            urls = value if isinstance(value, list) else [value]
+            for link in urls:
+                contents.append({"type": key, key: {"data": link['data'],
+                                                    "format": link['format']}})
                 
 
     messages = []
