@@ -9,11 +9,27 @@ import base64
 TELEGRAM_MAX_MESSAGE_LENGTH = 4096
 TELEGRAM_MAX_MESSAGE_CAPTION = 1024
 
+
+def prepare_messages(post: str):
+    long_short_message = split_short_long_message(post)
+    results = []
+    if long_short_message:
+        short, long = long_short_message
+        results.append(short)
+        if long:
+            chunks = split_long_message(long)
+            results.extend(chunks)
+        return results, True
+    else:
+        results.append(post)
+        return results, False
+    
+
 def split_short_long_message(text: str, max_length_caption: int = TELEGRAM_MAX_MESSAGE_CAPTION,
                              second_part_percent_value_threshold: int = 0.3):
     '''
     second_part_percent_value_threshold - размер второй части сплита от max_length_caption
-    если вторая часть больше second_part_percent_value_threshold*second_part_percent_value_threshold, то
+    если вторая часть больше second_part_percent_value_threshold*second_part_percent_value_threshold, то 
     есть смысл разбивать пост и прикладывать картинку
     иначе - нет, картинка в кэшэ
     '''
@@ -29,9 +45,35 @@ def split_short_long_message(text: str, max_length_caption: int = TELEGRAM_MAX_M
             return short_part, long_part
         else:
             return None
+                    
     else:
-
         return None
+        
+
+def split_long_message(text: str, max_length: int = TELEGRAM_MAX_MESSAGE_LENGTH) -> list[str]:
+    """
+    Разбивает длинное сообщение на несколько частей, не разрывая слова.
+    Возвращает список сообщений (частей).
+    """
+    if len(text) <= max_length:
+        return [text]
+
+    chunks = []
+    current_chunk = ""
+    words = text.split(' ')
+
+    for word in words:
+        if len(current_chunk) + len(word) + 1 > max_length:
+            chunks.append(current_chunk.strip())
+            current_chunk = ""
+
+        current_chunk += word + " "
+
+    if current_chunk:
+        chunks.append(current_chunk.strip().replace("*"," "))
+
+    return chunks
+
 
 def clean_assistant_answer(text: str) -> str:
     """
