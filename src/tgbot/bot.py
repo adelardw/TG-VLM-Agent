@@ -1,11 +1,12 @@
 from aiogram.types import KeyboardButton, ReplyKeyboardRemove
 from aiogram.utils.chat_action import ChatActionSender
+import base64
 from aiogram.fsm.context import FSMContext
 from aiogram import F
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from aiogram import Bot, Dispatcher, Router, types
 from aiogram.filters import CommandStart, Command
-from aiogram.types import FSInputFile
+from aiogram.types import FSInputFile, InputMediaPhoto, BufferedInputFile
 from aiogram.fsm.storage.memory import MemoryStorage
 from beautylogger import logger
 import io
@@ -20,7 +21,7 @@ from agents import tgc_mas
 from graphs import tgc_default
 import numpy as np
 from tgbot.bot_shemas import BotStates
-from tgbot.utils import (split_long_message,
+from tgbot.utils import (prepare_messages,
                          grant_trial_subscription,
                          grant_30days_subscription,
                          check_subscription,
@@ -42,27 +43,84 @@ dp.include_router(router)
 router.message.middleware(AlbumMiddleware(latency=0.6))
 
 
-async def send_chunked_message(message: types.Message, text: str):
-    """
-    Безопасно отправляет длинные сообщения.
-    1. Пытается отправить как Markdown (жирный текст работает).
-    2. Если ошибка форматирования или разбиения — отправляет как чистый текст.
-    """
-    text = clean_assistant_answer(text)
-    text = text.replace("***", "*").replace("**", "*").replace("#","")
-    chunks = split_long_message(text)
-    
-    try:
-        for chunk in chunks:
-            await message.answer(chunk, parse_mode="Markdown")
-            
-    except TelegramBadRequest as e:
+def decode_data_uri(uri: str) -> BufferedInputFile:
+    header, encoded_data = uri.split(',', 1)
+    mime_type = header.split(';')[0].split('/')[-1]
+    image_bytes = base64.b64decode(encoded_data)
+    return BufferedInputFile(image_bytes, filename=f"image.{mime_type}")
 
-        logger.warning(f"Markdown failed, sending plain text. Error: {e}")
+async def _safe_answer(message: types.Message, text: str):
+    """Вспомогательная функция для отправки текста с фолбеком Markdown"""
+    if not text.strip():
+        return
+    try:
+        await message.answer(text, parse_mode="Markdown")
+    except TelegramBadRequest:
+        await message.answer(text, parse_mode=None)
+
+async def send_chunked_message(message: types.Message, text: str, image_links: list[str] = None):
+    """
+    Отправляет ответ пользователю, используя авторскую логику разбиения.
+    """
+    if image_links is None:
+        image_links = []
+
+    text = clean_assistant_answer(text)
+    text = text.replace("***", "*").replace("**", "*").replace("#", "")
+
+    message_chunks, need_photo_to_msg_chunk = prepare_messages(text)
+
+    if not image_links:
+        for chunk in message_chunks:
+            await _safe_answer(message, chunk)
+        return
+
+    media_group = []
+    for link in image_links[:10]:
+        try:
+            if link.startswith('data:image/'):
+                photo_file = decode_data_uri(link)
+                media_group.append(InputMediaPhoto(media=photo_file))
+            elif link.startswith(('http://', 'https://')):
+                media_group.append(InputMediaPhoto(media=link))
+        except Exception as e:
+            logger.error(f"Ошибка подготовки медиа: {e}")
+
+    if media_group:
+        caption_chunk = message_chunks[0]
         
-        chunks = split_long_message(text) 
-        for chunk in chunks:
-            await message.answer(chunk, parse_mode=None)
+        if len(caption_chunk) > 1024:
+            caption = caption_chunk[:1020] + "..."
+            remaining_text = caption_chunk[1020:]
+            message_chunks[0] = caption
+            message_chunks.insert(1, remaining_text)
+        else:
+            caption = caption_chunk
+
+        try:
+            if len(media_group) > 1:
+                media_group[0].caption = caption
+                media_group[0].parse_mode = "Markdown"
+                await message.answer_media_group(media=media_group)
+            else:
+                await message.answer_photo(
+                    photo=media_group[0].media, 
+                    caption=caption, 
+                    parse_mode="Markdown"
+                )
+        except TelegramBadRequest:
+            if len(media_group) > 1:
+                media_group[0].parse_mode = None
+                await message.answer_media_group(media=media_group)
+            else:
+                await message.answer_photo(photo=media_group[0].media, caption=caption, parse_mode=None)
+        
+        for chunk in message_chunks[1:]:
+            await _safe_answer(message, chunk)
+    else:
+        for chunk in message_chunks:
+            await _safe_answer(message, chunk)
+
 
 async def process_message_content(bot: Bot, message: types.Message, album: list[types.Message] = None):
     """
@@ -131,13 +189,13 @@ async def run_default_assistant(message: types.Message, text: str, user_id: str,
         end = perf_counter() - start
 
         schema_obj = answer_state.get('generation')
-        
+        web_images = answer_state.get('web_images', [])
         
         raw_text = schema_obj.final_answer if schema_obj else "Извините, я не смог сформулировать ответ."
         thread_memory.add_message_to_history(thread_info['thread_id'], role='assistant', content=raw_text,
                                              metadata={'time': (message.date + timedelta(seconds=int(end))).isoformat() })
         
-        await send_chunked_message(message, raw_text)
+        await send_chunked_message(message, raw_text, image_links=web_images)
             
     except Exception as e:
         logger.info(f'[BUG in Default Assistant] {e}')

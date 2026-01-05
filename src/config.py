@@ -10,6 +10,7 @@ WHITE_LIST = os.getenv('WHITE_LIST', '').split(',')
 TIMEZONE = pytz.timezone(os.getenv('TIMEZONE'))
 OPEN_ROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
 TEXT_IMAGE_MODEL = os.getenv('TEXT_IMAGE_MODEL')
+IMAGE_GEN_MODEL = os.getenv('IMAGE_GEN_MODEL')
 EMBED_MODEL = os.getenv('EMBED_MODEL')
 
 FIRST_NAME_STEM_RU = os.getenv("FIRST_NAME_STEM_RU")

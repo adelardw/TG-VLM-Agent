@@ -1,28 +1,22 @@
 from urllib.parse import urlparse
 import base64
-from collections import deque
-from PIL import Image, ImageDraw, ImageFont
+import shutil
+import mimetypes
+import os
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-from typing import Optional, Literal
 import re
+import fitz 
+import io
 import json
 import tldextract
 from ddgs import DDGS
 import requests
 from bs4 import BeautifulSoup
 import random
-import undetected_chromedriver as uc
-from undetected_chromedriver.webelement import WebElement
-
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-
-
-import base64
 from typing import Literal, Optional, List, Union, Dict, Any
-from beautylogger import logger
-from datetime import datetime
-from config import TIMEZONE
+from PIL import Image
+from io import BytesIO
+from loguru import logger
 
 
 
@@ -102,6 +96,46 @@ def parse_site(url: str):
 
 
 
+def link_parser(url: str):
+
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                            'Accept-Language': 'en-US,en;q=0.5',
+                            'Accept-Encoding': 'gzip, deflate',
+                            'DNT': '1',
+                            'Connection': 'keep-alive',
+                            'Upgrade-Insecure-Requests': '1',
+                            'Sec-Fetch-Dest': 'document',
+                            'Sec-Fetch-Mode': 'navigate',
+                            'Sec-Fetch-Site': 'none',
+                            'Sec-Fetch-User': '?1'}
+
+    headers['User-Agent'] = random.choice(user_agents)
+
+    try:
+        head = requests.head(url, headers=headers, timeout=10, allow_redirects=True)
+        content_type = head.headers.get('Content-Type', '').lower()
+
+        if 'application/pdf' in content_type or url.lower().endswith('.pdf'):
+            resp = requests.get(url, headers=headers, timeout=20)
+            doc = fitz.open(stream=resp.content, filetype="pdf")
+            text = chr(12).join([page.get_text() for page in doc])
+            return {"type": "text", "content": f"[Контент из PDF {url}]:\n{text}"}
+
+        elif 'image/' in content_type:
+            resp = requests.get(url, headers=headers, timeout=20)
+            base64_img = base64.b64encode(resp.content).decode('utf-8')
+            mime = content_type if 'image/' in content_type else "image/jpeg"
+            data_uri = f"data:{mime};base64,{base64_img}"
+            return {"type": "image", "content": data_uri}
+
+        else:
+            text = parse_site(url)
+            return {"type": "text", "content": f"[Контент с сайта {url}]:\n{text}"}
+
+    except Exception as e:
+        logger.error(f"Error parsing link {url}: {e}")
+        return None
 
 def search(search_query: str):
     '''
@@ -133,8 +167,114 @@ def search(search_query: str):
 
 
 
+def image_to_data_uri(filepath: str) -> str:
+    """
+    Принимает путь к файлу изображения и возвращает
+    Data URI (Base64), готовый для отправки в LLM.
+    """
+    mime_type, _ = mimetypes.guess_type(filepath)
+    if mime_type is None:
+        mime_type = "application/octet-stream"
 
-def image_text_prompt(sys_prompt: Optional[str], input_dict: dict, history_key: str ):
+    with open(filepath, "rb") as image_file:
+        binary_data = image_file.read()
+
+
+    base64_encoded_string = base64.b64encode(binary_data).decode('utf-8')
+    data_uri = f"data:{mime_type};base64,{base64_encoded_string}"
+    
+    return data_uri
+
+def get_links_for_images(image_path: str):
+    links = []
+    if os.path.exists(image_path):
+        for im in os.listdir(image_path):
+            impath = os.path.join(image_path, im)
+            uri = image_to_data_uri(impath)
+            links.append(uri)
+    
+    return links
+
+def rm_img_folders(base_path: str = 'downloads', cached_depth: int = 10):
+    if os.path.exists(base_path) and os.path.isdir(base_path):
+        if len(folders:=os.listdir(base_path)) >= cached_depth:
+            for fld in folders:
+                full_path = os.path.join(base_path, fld) 
+                shutil.rmtree(full_path)
+                
+                
+def image_search(search_query, max_images=10, base_path='downloads'):
+    if not os.path.exists(base_path):
+        os.makedirs(base_path, exist_ok=True)
+    
+    safe_query_name = "".join([c if c.isalnum() else "_" for c in search_query])
+    save_directory = os.path.join(base_path, safe_query_name)
+    os.makedirs(save_directory, exist_ok=True)
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+
+    downloaded_paths = []
+
+    try:
+        with DDGS() as loader:
+            results = loader.images(
+                query=search_query,
+                region='wt-wt',
+                safesearch='on',
+                size="Wallpaper",
+                max_results=max_images
+            )
+            
+            count = 0
+            for res in results:
+                if count >= max_images:
+                    break
+
+                image_url = res.get('image')
+                if not image_url: continue
+
+                try:
+                    response = requests.get(image_url, headers=headers, timeout=7, stream=True)
+                    if response.status_code != 200: continue
+
+                    file_size = int(response.headers.get('Content-Length', 0))
+                    if 0 < file_size < 150000: 
+                        logger.info(f"Пропуск: файл слишком мал ({file_size} байт)")
+                        continue
+
+                    img_content = response.content
+                    img = Image.open(BytesIO(img_content))
+                    width, height = img.size
+
+                    if width < 1200 and height < 1200:
+                        logger.info(f"Пропуск: низкое разрешение {width}x{height}")
+                        continue
+
+                    ext = f".{img.format.lower()}" if img.format else ".jpg"
+                    filename = f"highres_{count + 1}{ext}"
+                    full_path = os.path.join(save_directory, filename)
+
+                    with open(full_path, 'wb') as f:
+                        f.write(img_content)
+                    
+                    downloaded_paths.append(full_path)
+                    logger.info(f"✅ Успешно скачано: {width}x{height} | {filename}")
+                    count += 1
+
+                except Exception as e:
+                    logger.error(f"Ошибка при обработке {image_url}: {e}")
+                    continue
+
+        return get_links_for_images(save_directory)
+
+    except Exception as e:
+        logger.error(f"Глобальная ошибка: {e}")
+        return []
+
+
+def image_text_prompt(sys_prompt: Optional[str], input_dict: dict, history_key: str | None = None):
 
     contents = []
     history = input_dict.get(history_key, [])
@@ -144,19 +284,14 @@ def image_text_prompt(sys_prompt: Optional[str], input_dict: dict, history_key: 
         if key == history_key:
             continue
         
-        if (key != 'image_url') & (key != 'input_audio') & (key != 'video_url'):
+        if (key != 'image_url') & (key != 'video_url'):
             contents.append({"type": "text",'text': value})
 
         elif key == 'image_url' or key == 'video_url':
             urls = value if isinstance(value, list) else [value]
             for link in urls:
                 contents.append({"type": key, key: {"url": link}})
-        
-        elif key == 'input_audio':
-            urls = value if isinstance(value, list) else [value]
-            for link in urls:
-                contents.append({"type": key, key: {"data": link['data'],
-                                                    "format": link['format']}})
+    
                 
 
     messages = []

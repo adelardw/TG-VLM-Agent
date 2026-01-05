@@ -40,14 +40,20 @@ class SearchQuerySchema(BaseModel):
     query: str = Field(..., description="Поисковый запрос для векторной базы данных, чтобы найти контекст для ответа на сообщение пользователя. Запрос должен быть автономным (содержать сущности, а не местоимения).")
 
 class FactExtractionSchema(BaseModel):
-    """Извлечение конкретных фактов из истории."""
     found_facts: list[str] = Field(default_factory=list, description="Список конкретных фактов, найденных в предоставленной истории, которые отвечают на вопрос пользователя.")
     is_relevant: bool = Field(..., description="Есть ли в этом куске истории информация, полезная для текущего вопроса.")
 
 
+class ImageRelevanceFilter(BaseModel):    
+    image_numbers: list[int]  = Field(..., description="Список с номерами изображений, которые подходят под запрос пользователя."\
+                                                      "Отсчет изображений ведется от 0."
+                                                      "Если ни одно изображение не подошло согласно инструкции пользователя и системной инструкции, "\
+                                                      "то верни  - пустой список []")
+
 class RecallAction(BaseModel):
-    need_recall: bool = Field(description="Нужно ли лезть в векторную базу (прошлое пользователя)")
-    need_web_search: bool = Field(description="Нужно ли лезть в Google (актуальные данные)")
+    need_recall: bool = Field(description="Нужно ли ли искать информации в векторной базу (прошлое пользователя) - в памяти")
+    need_web_search: bool = Field(description="Нужно ли искать текстовую информацию в интернете. Кроме приложенных ссылок - они парсятся отдельно.")
+    need_images_search: bool = Field(description="Нужно ли искать изображения в инернете")
     search_query: str | None = Field(description="Поисковый запрос для векторной модели")
     web_query: str | None = Field(description="Запрос для интернета (например, 'Apple stock price today')")
     visual_search_query: str | None = Field(description="Что искать на изображениях (применимо в случае поиска внутри векторной базы)")

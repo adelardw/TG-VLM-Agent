@@ -2,26 +2,27 @@ from langchain_core.output_parsers import StrOutputParser
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import InMemorySaver
 from datetime import datetime, timedelta
-from deprecated import deprecated 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import asyncio
+import re
 
 from time import perf_counter
 import numpy as np
 from graphs.utils import search
 
 from .structured_outputs import (AnswerSchema,RecallAction,SearchStructuredOutputs,SelectedThreads,
-                                 FactExtractionSchema,SummarizeStructuredOutputs,SearchQuerySchema)
+                                 ImageRelevanceFilter, FactExtractionSchema,SummarizeStructuredOutputs,SearchQuerySchema)
 
 from .prompts import (recall_prompt,query_prompt,make_search_query_prompt, memory_selector_prompt,
-                    summarize_prompt,default_system_prompt, fact_extraction_prompt)
+                    summarize_prompt,default_system_prompt, fact_extraction_prompt, image_gen_prompt,
+                    loaded_image_validation_prompt)
 
 from .graph_states import DefaultAssistant
-from .utils import prepare_cache_messages_to_langchain
+from .utils import prepare_cache_messages_to_langchain, image_search, rm_img_folders, link_parser
 
 from src.users_cache import thread_memory, embed
 from src.llm import OpenRouterChat
-from src.config import OPEN_ROUTER_API_KEY, TEXT_IMAGE_MODEL
+from src.config import OPEN_ROUTER_API_KEY, TEXT_IMAGE_MODEL, IMAGE_GEN_MODEL
 from src.beautylogger import logger
 
 ckpt = InMemorySaver()
@@ -38,6 +39,39 @@ generate_query_assistant = query_prompt | llm.with_structured_output(SearchQuery
 extractor_chain = fact_extraction_prompt | llm.with_structured_output(FactExtractionSchema)
 search_agent = make_search_query_prompt | llm.with_structured_output(SearchStructuredOutputs)
 memory_selector = memory_selector_prompt | llm.with_structured_output(SelectedThreads)
+loaded_image_validation = loaded_image_validation_prompt | llm.with_structured_output(ImageRelevanceFilter)
+
+
+async def link_extraction_node(state):
+    logger.info('[LINK EXTRACTION]')
+    state['web_images'] = []
+    state['links_text'] = ''
+    state['links_images'] = ''
+
+    user_msg = state['user_message']
+    
+    urls = re.findall(r'(https?://[^\s]+)', user_msg)
+    if not urls:
+        return state
+
+    parsed_texts = []
+    parsed_images = []
+
+    tasks = [asyncio.to_thread(link_parser, url) for url in urls]
+    results = await asyncio.gather(*tasks)
+
+    for res in results:
+        if not res: continue
+        if res['type'] == 'text':
+            parsed_texts.append(res['content'])
+        elif res['type'] == 'image':
+            parsed_images.append(res['content'])
+
+    
+    return {
+        "links_text": "\n\n".join(parsed_texts),
+        "links_images": parsed_images
+    }
 
 
 async def find_similar_mem_chunks(documents: list[str], query: str, top_k: int = 3):
@@ -165,6 +199,7 @@ async def recall_node(state):
     })
     
     return {
+        "need_images_search": action.need_images_search,
         "need_recall": action.need_recall,
         "need_web_search": action.need_web_search,
         "search_query": action.search_query,
@@ -230,7 +265,27 @@ def route_after_recall(state):
     if state.get("need_web_search"):
         targets.append("web_search")
     
+    if state.get('need_images_search'):
+        targets.append("image_search")
+    
     return targets if targets else ["answer"]
+
+async def images_search_node(state):
+    logger.info('[IMAGE SEARCH]')
+    query = state.get('search_query') or state.get('user_message')
+    images = await asyncio.to_thread(image_search, query)
+    logger.info('[IMAGE SEARCH VALIDATION]')
+    indecies = (await loaded_image_validation.ainvoke({"image_url": images,
+                                                       "query": f"Количество картинок: {len(images)}"})).image_numbers
+    
+    if indecies:
+        images = [im for i, im in enumerate(images) if i in indecies]
+    else:
+        images = []
+
+    return {"web_images": images}
+
+
 
 
 async def answer_node(state):
@@ -239,10 +294,15 @@ async def answer_node(state):
     
     web_info = state.get('web_context', '') 
     web_data = []
+    
     if web_info:
         web_data = [{"role": "system", "content": f"АКТУАЛЬНЫЕ ДАННЫЕ ИЗ ИНТЕРНЕТА:\n{web_info}"}]
         logger.info(f'[WEB CTX] {web_data}')
 
+    links_text = state.get('links_text', '')
+    if links_text:
+        web_data.append({"role": "system", "content": f"ДАННЫЕ ПО ССЫЛКАМ ИЗ СООБЩЕНИЯ ПОЛЬЗОВАТЕЛЯ:\n{links_text}"})
+        
     history_lc = prepare_cache_messages_to_langchain(state.get('global_context', []),
                                                      local=False)
 
@@ -251,8 +311,20 @@ async def answer_node(state):
     full_history_lc = history_lc + web_lc + locals_lc 
 
     all_images = []
-    if state.get('image_url'):
-        all_images.append(state['image_url'])
+    if current_img := state.get('image_url'):
+        if isinstance(current_img, list):
+            all_images.extend(current_img)
+        else:
+            all_images.append(current_img)
+    
+    if web_images := state.get('web_images', []):
+        logger.info(f"[ANSWER] Adding {len(web_images)} found images to context")
+        all_images.extend(web_images)
+    
+    if ext_images := state.get('links_images', []):
+        logger.info(f"[ANSWER] Adding {len(ext_images)} found images from links to context")
+        
+        all_images.extend(ext_images)
 
     input_dict = {
         'history': full_history_lc, 
@@ -267,19 +339,23 @@ async def answer_node(state):
     state['generation'] = response
     state['global_context'] = []
     state['web_context'] = ''
+    rm_img_folders()
     return state
         
 workflow = StateGraph(DefaultAssistant)
 
 workflow.add_node("summarize", summarize_node)
+workflow.add_node("link_extraction", link_extraction_node)
 workflow.add_node("recall", recall_node)
 workflow.add_node("memory_fetch", memory_node)
 workflow.add_node("web_search", web_search_node)
 workflow.add_node("answer", answer_node)
 workflow.add_node("local_summarize", local_summarize_node)
+workflow.add_node("image_search", images_search_node)
 
+workflow.add_edge(START, "link_extraction")
 workflow.add_conditional_edges(
-    START,
+    "link_extraction",
     router,
     {
         "summarize": "summarize",
@@ -296,13 +372,14 @@ workflow.add_conditional_edges(
     {
         "memory_fetch": "memory_fetch", 
         "web_search": "web_search", 
+        "image_search": "image_search",
         "answer": "answer"
     }
 )
 
 workflow.add_edge("memory_fetch", "answer")
 workflow.add_edge("web_search", "answer")
-
+workflow.add_edge("image_search", "answer")
 workflow.add_edge("summarize", "recall")
 workflow.add_edge("answer", END)
 
