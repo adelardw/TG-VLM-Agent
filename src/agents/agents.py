@@ -10,9 +10,9 @@ from agents.tasks import *
 from agents.structured_outputs import CalendarStructuredOutput
 from agent_builder import MakeRoutingMultiAgents
 from llm import OpenRouterChat
-from config import OPEN_ROUTER_API_KEY
+from config import OPEN_ROUTER_API_KEY, TEXT_IMAGE_MODEL
 
-llm = OpenRouterChat(api_key=OPEN_ROUTER_API_KEY)
+llm = OpenRouterChat(api_key=OPEN_ROUTER_API_KEY, model_name=TEXT_IMAGE_MODEL)
 
 tgc_mas = MakeRoutingMultiAgents(llm, controller_agent_system_prompt)
 
