@@ -173,21 +173,43 @@ async def summarize_node(state):
 
 async def web_search_node(state):
     logger.info('[WEB SEARCH]')
-    search_results = await asyncio.to_thread(search, state['web_query'] or state['user_message'])
-    if not search_results:
-        return state
+    
+    query = state.get('web_query') or state.get('user_message')
+    if not query:
+        logger.warning("Web search query is None or empty")
+        return {"web_context": ""}
 
-    docs = splitter.create_documents(search_results)
-    texts = [d.page_content for d in docs]
+    raw_results = await asyncio.to_thread(search, query)
     
-    embeddings = np.array(await embed.aembed_documents(texts))
-    query_vec = np.array(await embed.aembed_query(state['web_query']))
-    scores = embeddings @ query_vec
+    if not raw_results:
+        return {"web_context": ""}
+
+    search_results = [res for res in raw_results if isinstance(res, str) and res.strip()]
     
-    top_indices = np.argsort(scores)[-3:][::-1]
-    web_context = "\n".join([f"Источник [Интернет]: {texts[i]}" for i in top_indices])
-    
-    return {"web_context": web_context}
+    if not search_results:
+        logger.info("No valid text content found in search results")
+        return {"web_context": ""}
+
+    try:
+        docs = splitter.create_documents(search_results)
+        texts = [d.page_content for d in docs]
+        
+        if not texts:
+            return {"web_context": ""}
+
+        embeddings = np.array(await embed.aembed_documents(texts))
+        query_vec = np.array(await embed.aembed_query(query))
+        
+        scores = embeddings @ query_vec
+        
+        top_indices = np.argsort(scores)[-3:][::-1]
+        web_context = "\n".join([f"Источник [Интернет]: {texts[i]}" for i in top_indices])
+        
+        return {"web_context": web_context}
+        
+    except Exception as e:
+        logger.error(f"Error during web content processing: {e}")
+        return {"web_context": ""}
 
 
 async def recall_node(state):
