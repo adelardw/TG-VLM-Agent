@@ -47,6 +47,7 @@ async def link_extraction_node(state):
     state['web_images'] = []
     state['links_text'] = ''
     state['links_images'] = ''
+    state['global_context'] = []
 
     user_msg = state['user_message']
     
