@@ -17,11 +17,11 @@ llm = OpenRouterChat(api_key=OPEN_ROUTER_API_KEY, model_name=TEXT_IMAGE_MODEL)
 tgc_mas = MakeRoutingMultiAgents(llm, controller_agent_system_prompt)
 
 
-tgc_mas.update(system_prompt=weather_agent_system_prompt,
-           agent_name='weather_agent',
-           agent_type='react',
-           agent_description=WEATHER_TASKS,
-           tools=WEATHER_TOOL)
+# tgc_mas.update(system_prompt=weather_agent_system_prompt,
+#            agent_name='weather_agent',
+#            agent_type='react',
+#            agent_description=WEATHER_TASKS,
+#            tools=WEATHER_TOOL)
 
 # tgc_mas.update(system_prompt=gmail_agent_system_prompt,
 #            agent_name='mail_agent',

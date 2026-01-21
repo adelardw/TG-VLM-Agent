@@ -230,10 +230,13 @@ async def init(message: types.Message, state: FSMContext):
         await cmd_menu(message)
     elif not is_subscribed and not end_time:
         builder.row(KeyboardButton(text="Прочитать пользовательское соглашение"))
-        await message.answer('Привет! Я голосовой ассистент VEGA, который помогает c такими проблемами'\
+        await message.answer('Привет! Я ассистент, который помогает с некоторыми рутинными задачами:'\
                             "1. Вы можете поставить какие - то уведомления о каких - то событиях"\
                             "2. Посмотреть прогноз погоды в Вашем городе"\
                             "3. Сделать саммари новостей из интенета по задаваемой Вами тематике"\
+                            "4. Найти изображения в интернете."\
+                            "5. Попросить меня проанализировать изображения."\
+                            
                             'Вы можете со мной общаться c использованием текста или голосовых сообщений.',
                             reply_markup=builder.as_markup(resize_keyboard=True))
 
@@ -258,7 +261,7 @@ async def cmd_menu(message: types.Message):
         text_msg = "Ваша подписка неактивна."
     else:
         if user_id in WHITE_LIST:
-            builder.row(KeyboardButton(text="[AGENTIC MODE]"))
+            builder.row(KeyboardButton(text="[Agent On]"))
         builder.row(KeyboardButton(text="Прочитать пользовательское соглашение"))
         text_msg = "Меню открыто. Вы можете просто писать мне сообщения или отправлять голосовые."
 
@@ -335,16 +338,16 @@ async def reject(message: types.Message, state: FSMContext):
 
 
 
-@router.message(F.text == '[AGENTIC MODE]')
+@router.message(F.text == '[Agent On]')
 async def send_message(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     is_subscribed, end_date = check_subscription(user_id, cache_db)
     builder = ReplyKeyboardBuilder()
     if is_subscribed:
-        builder.row(KeyboardButton(text="Выход из режима"))
+        builder.row(KeyboardButton(text="[Agent Off]"))
         await message.answer(
-            "🕵️ *Режим Агента активирован*\n"
-            "Я выполняю задачи (установки событий календарь, давать советы по текущей погоде в Вашем городе).\n"
+            "*Режим Агента активирован*\n"
+            "Пока что я могу ставить напоминания о событиях.\n"
             "Нажмите кнопку ниже или напишите 'Меню' для возврата к обычному общению.",
             reply_markup=builder.as_markup(resize_keyboard=True),
             parse_mode="Markdown")
@@ -358,7 +361,7 @@ async def send_message(message: types.Message, state: FSMContext):
 @router.message(BotStates.chat)
 async def chat(message: types.Message, state: FSMContext, bot: Bot):
     user_id = message.from_user.id
-    exit_commands = ['/menu', 'меню', 'menu', 'выход', 'выход из режима', 'stop', 'стоп']
+    exit_commands = ['/menu', 'меню', 'menu', 'выход', 'выход из режима', 'stop', 'стоп', '[agent off]']
     
     if message.voice:
         audio = await voice_message_to_numpy(bot, message.voice.file_id, 16000)

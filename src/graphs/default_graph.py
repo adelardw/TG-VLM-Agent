@@ -110,6 +110,7 @@ async def local_summarize_node(state):
     thread_id, user_id = state['thread_id'], state['user_id']
     
     current_window_history = thread_memory.get_local_history(thread_id)
+    preserved_messages = current_window_history[-2:] if len(current_window_history) >= 2 else current_window_history
     history_lc = prepare_cache_messages_to_langchain(current_window_history)
     
     summary_results = await summarize_assistant.ainvoke({'history': history_lc})
@@ -126,14 +127,21 @@ async def local_summarize_node(state):
     thread_memory._add_msg_local_history(thread_id, 'assistant', summary_content, 
                                          metadata={'time': state['time'].isoformat(),
                                                    'images': captured_images})
-    
+    for msg in preserved_messages:
+        thread_memory._add_msg_local_history(
+            thread_id, 
+            msg['role'], 
+            msg['content'], 
+            msg.get('metadata')
+        )
+        
     await thread_memory.add_user_thread_summary(
         summary=summary_results.summary,
         user_id=user_id, 
         thread_id=thread_id,
         metadata={"time": state['time'].isoformat()}
     )
-    
+
     state['local_context'] = thread_memory.get_local_history(thread_id)
     logger.info(f'[LOCAL CTX] {state.get("local_context", [])}')
     return state
@@ -146,6 +154,8 @@ async def summarize_node(state):
     
     history = thread_memory.get_thread_history(previous_thread_id)
     history_lc = prepare_cache_messages_to_langchain(history)
+    
+    preserved_messages = history[-2:] if len(history) >= 2 else history
     
     captured_images = []
     for msg in history:
@@ -160,6 +170,10 @@ async def summarize_node(state):
     end = perf_counter() - start
     state['time'] = state['time'] + timedelta(seconds=int(end))
     
+    bridge_content = f"Выжимка предыдущего диалога: {summary_results.summary}"
+    thread_memory._add_msg_local_history(current_thread_id, 'assistant', bridge_content, 
+                                         metadata={'time': state['time'].isoformat()})
+
     await thread_memory.add_user_thread_summary(
         summary=summary_results.summary,
         user_id=user_id,
@@ -168,7 +182,16 @@ async def summarize_node(state):
                   'images': captured_images} 
     )
 
+    for msg in preserved_messages:
+        thread_memory._add_msg_local_history(
+            current_thread_id, 
+            msg['role'], 
+            msg['content'], 
+            msg.get('metadata')
+        )
+
     logger.info(f'[LOCAL CTX] {state.get("local_context", [])}')
+    state['local_context'] = thread_memory.get_local_history(current_thread_id)
     return state
 
 
