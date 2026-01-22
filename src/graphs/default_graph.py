@@ -151,7 +151,7 @@ async def summarize_node(state):
     logger.info('[SUMMARIZE]')
     user_id = state['user_id']
     previous_thread_id = state['previous_thread_id']
-    
+    thread_id = state['thread_id']
     history = thread_memory.get_thread_history(previous_thread_id)
     history_lc = prepare_cache_messages_to_langchain(history)
     
@@ -171,7 +171,7 @@ async def summarize_node(state):
     state['time'] = state['time'] + timedelta(seconds=int(end))
     
     bridge_content = f"Выжимка предыдущего диалога: {summary_results.summary}"
-    thread_memory._add_msg_local_history(current_thread_id, 'assistant', bridge_content, 
+    thread_memory._add_msg_local_history(thread_id, 'assistant', bridge_content, 
                                          metadata={'time': state['time'].isoformat()})
 
     await thread_memory.add_user_thread_summary(
@@ -184,14 +184,14 @@ async def summarize_node(state):
 
     for msg in preserved_messages:
         thread_memory._add_msg_local_history(
-            current_thread_id, 
+            thread_id, 
             msg['role'], 
             msg['content'], 
             msg.get('metadata')
         )
 
     logger.info(f'[LOCAL CTX] {state.get("local_context", [])}')
-    state['local_context'] = thread_memory.get_local_history(current_thread_id)
+    state['local_context'] = thread_memory.get_local_history(thread_id)
     return state
 
 
