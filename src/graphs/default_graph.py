@@ -94,7 +94,6 @@ async def find_similar_mem_chunks(documents: list[str], query: str, top_k: int =
 
 async def router(state):
     logger.info('[ROUTER]')
-    logger.info(f'[USER QUERY] {state["user_message"]}')
     if state.get("make_history_summary"):
         return "summarize"
     
@@ -143,7 +142,6 @@ async def local_summarize_node(state):
     )
 
     state['local_context'] = thread_memory.get_local_history(thread_id)
-    logger.info(f'[LOCAL CTX] {state.get("local_context", [])}')
     return state
 
 
@@ -190,7 +188,6 @@ async def summarize_node(state):
             msg.get('metadata')
         )
 
-    logger.info(f'[LOCAL CTX] {state.get("local_context", [])}')
     state['local_context'] = thread_memory.get_local_history(thread_id)
     return state
 
@@ -336,7 +333,6 @@ async def images_search_node(state):
 
 async def answer_node(state):
     logger.info('[ANSWER - WITH CoT]')
-    
     
     web_info = state.get('web_context', '') 
     web_data = []
